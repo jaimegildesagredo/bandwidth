@@ -1,5 +1,3 @@
 # Bandwidth
 
-.. image:: https://secure.travis-ci.org/jaimegildesagredo/bandwidth.svg?branch=master
-    :target: http://travis-ci.org/jaimegildesagredo/bandwidth
-    :alt: Build status
+[![Build status](https://secure.travis-ci.org/jaimegildesagredo/bandwidth.svg?branch=master)](http://travis-ci.org/jaimegildesagredo/bandwidth)
