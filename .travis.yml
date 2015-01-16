@@ -5,6 +5,7 @@ go:
     - tip
 
 install:
-    make build
+    - make build
 
 script:
+    - make test
