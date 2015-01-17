@@ -4,89 +4,68 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const (
-	DELAY = 1 * time.Second
-)
-
-func main() {
-	interfaceName := getInterfaceName()
-
-	fmt.Println("Interface", interfaceName)
-
-	go func() {
-		var rawRxBytes []byte
-		var rxBytes int
-		var oldRxBytes int
-		var err error
-
-		for {
-			rawRxBytes, err = ioutil.ReadFile("/sys/class/net/" + interfaceName + "/statistics/rx_bytes")
-
-			if err != nil {
-				fmt.Println("Error", err)
-				continue
-			}
-
-			rxBytes, err = strconv.Atoi(strings.Trim(string(rawRxBytes), "\n"))
-
-			if err != nil {
-				fmt.Println("Error", err)
-				continue
-			}
-
-			if oldRxBytes != 0 {
-				fmt.Println("D:", (rxBytes-oldRxBytes)/1000/(int(DELAY/time.Second)), "KB/s")
-			}
-
-			oldRxBytes = rxBytes
-
-			time.Sleep(DELAY)
-		}
-	}()
-
-	go func() {
-		var rawTxBytes []byte
-		var txBytes int
-		var oldTxBytes int
-		var err error
-
-		for {
-			rawTxBytes, err = ioutil.ReadFile("/sys/class/net/" + interfaceName + "/statistics/tx_bytes")
-
-			if err != nil {
-				fmt.Println("Error", err)
-				continue
-			}
-
-			txBytes, err = strconv.Atoi(strings.Trim(string(rawTxBytes), "\n"))
-
-			if err != nil {
-				fmt.Println("Error", err)
-				continue
-			}
-
-			if oldTxBytes != 0 {
-				fmt.Println("U:", (txBytes-oldTxBytes)/1000/(int(DELAY/time.Second)), "KB/s")
-			}
-
-			oldTxBytes = txBytes
-
-			time.Sleep(DELAY)
-		}
-	}()
+func calculateBandwidth(interfaceName string, statisticsName string, delay int, output chan int) {
+	var rawBytes []byte
+	var bytes int
+	var previousBytes int
+	var err error
 
 	for {
-		time.Sleep(1 * time.Minute)
+		rawBytes, err = ioutil.ReadFile("/sys/class/net/" + interfaceName + "/statistics/" + statisticsName)
+
+		if err != nil {
+			log.Println("Error reading interface ", interfaceName, statisticsName, ":", err)
+			continue
+		}
+
+		bytes, err = strconv.Atoi(strings.Trim(string(rawBytes), "\n"))
+
+		if err != nil {
+			log.Println("Error parsing", statisticsName, err)
+			continue
+		}
+
+		if previousBytes != 0 {
+			output <- (bytes - previousBytes) / 1000 / delay
+		}
+
+		previousBytes = bytes
+
+		time.Sleep(time.Duration(delay) * time.Second)
 	}
 }
 
-func getInterfaceName() string {
-	value := flag.String("interface", "eno1", "The interface name to monitor")
+func main() {
+	interfaceName, delay := parseArgs()
+
+	log.Println("Monitor interface", interfaceName)
+	log.Println("Monitor delay", delay)
+
+	downloadSpeeds := make(chan int)
+	uploadSpeeds := make(chan int)
+
+	go calculateBandwidth(interfaceName, "rx_bytes", delay, downloadSpeeds)
+	go calculateBandwidth(interfaceName, "tx_bytes", delay, uploadSpeeds)
+
+	for {
+		select {
+		case downloadSpeed := <-downloadSpeeds:
+			fmt.Println("D:", downloadSpeed, "KB/s")
+		case uploadSpeed := <-uploadSpeeds:
+			fmt.Println("U:", uploadSpeed, "KB/s")
+		}
+	}
+}
+
+func parseArgs() (string, int) {
+	interfaceName := flag.String("interface", "eno1", "The interface to monitor")
+	delay := flag.Int("delay", 1, "The monitor delay")
 	flag.Parse()
-	return *value
+	return *interfaceName, *delay
 }
